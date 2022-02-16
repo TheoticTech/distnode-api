@@ -1,0 +1,16 @@
+### Login - requires active auth service on localhost:3001
+POST http://localhost:3001/auth/login
+content-type: application/json
+
+{
+    "email": "jd@distnode.com",
+    "password": "P@ssw0rd"
+}
+
+### Health - returns 200 OK if service is healthy
+GET http://localhost:3000/health
+content-type: application/json
+
+### Whoami - returns active user object
+GET http://localhost:3000/api/whoami
+content-type: application/json
