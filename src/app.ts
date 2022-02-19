@@ -8,6 +8,7 @@ import mongoose from 'mongoose'
 
 // Local
 import { apiRoutes } from './routes/api'
+import { corsMiddleware } from './middleware/cors'
 
 // Configurations
 import { ENVIRONMENT, MONGO_CA_CERT, MONGO_URI, PORT } from './config'
@@ -44,6 +45,7 @@ mongoose
         process.exit(1)
     })
 
+app.use(corsMiddleware)
 app.use('/api', apiRoutes)
 
 app.get('/health', (req, res): express.Response => {

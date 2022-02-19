@@ -1,5 +1,5 @@
 ### Login - requires active auth service on localhost:3001
-POST http://localhost:3001/auth/login
+POST http://localhost:3000/auth/login
 content-type: application/json
 
 {
@@ -8,9 +8,9 @@ content-type: application/json
 }
 
 ### Health - returns 200 OK if service is healthy
-GET http://localhost:3000/health
+GET http://localhost:3001/health
 content-type: application/json
 
 ### Whoami - returns active user object
-GET http://localhost:3000/api/whoami
+GET http://localhost:3001/api/whoami
 content-type: application/json
