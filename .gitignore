@@ -130,5 +130,6 @@ dist
 .pnp.*
 
 # Other
+build
 tmp
 .DS_Store
