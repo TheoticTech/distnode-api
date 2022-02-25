@@ -29,7 +29,7 @@ npm run dev
 
 ## Running Tests
 ```sh
-npm run test
+npm test
 ```
 
 ## Running Test Coverage

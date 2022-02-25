@@ -16,7 +16,7 @@ const authMiddleware = (req, res, next): express.Response => {
   if (!accessToken) {
     return res
       .status(403)
-      .send('An access token is required for authentication')
+      .json({ authError: 'An access token is required for authentication' })
   }
   try {
     const decoded = jwt.verify(accessToken, JWT_ACCESS_TOKEN_SECRET)
@@ -24,10 +24,10 @@ const authMiddleware = (req, res, next): express.Response => {
   } catch (err) {
     if (err instanceof jwt.TokenExpiredError) {
       // Don't change the error message, it is used by the frontend
-      return res.status(401).send('Expired access token')
+      return res.status(401).json({ authError: 'Expired access token' })
     } else {
       console.log(err)
-      return res.status(401).send('Invalid access token')
+      return res.status(401).json({ authError: 'Invalid access token' })
     }
   }
   return next()
