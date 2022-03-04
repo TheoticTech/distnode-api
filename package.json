@@ -27,9 +27,10 @@
     "typescript": "^4.5.5"
   },
   "dependencies": {
+    "@godaddy/terminus": "^4.10.2",
     "cookie-parser": "^1.4.6",
     "express": "^4.17.2",
     "jsonwebtoken": "^8.5.1",
-    "mongoose": "^6.2.1"
+    "neo4j-driver": "^4.4.3"
   }
 }
