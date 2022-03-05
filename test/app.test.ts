@@ -14,7 +14,7 @@ chai.should()
 
 describe('API routes', function () {
   describe('GET /api/whoami', function () {
-    const accessToken = jwt.sign(
+    const validAccessToken = jwt.sign(
       { user_id: 'johndoe' },
       JWT_ACCESS_TOKEN_SECRET,
       {
@@ -22,11 +22,19 @@ describe('API routes', function () {
       }
     )
 
+    const expiredAccessToken = jwt.sign(
+      { user_id: 'johndoe' },
+      JWT_ACCESS_TOKEN_SECRET,
+      {
+        expiresIn: '-1s'
+      }
+    )
+
     it('should return 200 and userID if provided valid token', (done) => {
       chai
         .request(app)
         .get('/api/whoami')
-        .set('Cookie', `accessToken=${accessToken}`)
+        .set('Cookie', `accessToken=${validAccessToken}`)
         .send({})
         .end((err, res) => {
           if (err) {
@@ -34,6 +42,22 @@ describe('API routes', function () {
           }
           res.should.have.status(200)
           res.text.should.equal('johndoe')
+          done()
+        })
+    })
+
+    it('should return 401 if provided expired token', (done) => {
+      chai
+        .request(app)
+        .get('/api/whoami')
+        .set('Cookie', `accessToken=${expiredAccessToken}`)
+        .send({})
+        .end((err, res) => {
+          if (err) {
+            done(err)
+          }
+          res.should.have.status(401)
+          res.body.should.have.property('authError', 'Expired access token')
           done()
         })
     })
