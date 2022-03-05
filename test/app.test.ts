@@ -64,7 +64,10 @@ describe('API routes', function () {
             done(err)
           }
           res.should.have.status(403)
-          res.body.should.have.property('authError', 'An access token is required for authentication')
+          res.body.should.have.property(
+            'authError',
+            'An access token is required for authentication'
+          )
           done()
         })
     })
