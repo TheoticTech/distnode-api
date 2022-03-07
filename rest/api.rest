@@ -14,3 +14,18 @@ content-type: application/json
 ### Whoami - returns active user object
 GET http://localhost:3001/api/whoami
 content-type: application/json
+
+### Create post
+POST http://localhost:3001/api/posts/create
+content-type: application/json
+
+{
+    "title": "My first post",
+    "body": "This is my first post",
+    "visibility": "public",
+    "csrfToken": "{{csrfToken}}"
+}
+
+### Get user's posts
+GET http://localhost:3001/api/posts/
+content-type: application/json
