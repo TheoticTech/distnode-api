@@ -61,9 +61,9 @@ apiRoutes.post(
       await queryNeo4j(
         req.app.locals.driver,
         'MATCH (u:User {userID: $userID}) ' +
-        'CREATE (p:Post {title: $title, body: $body, visibility: $visibility})' +
-        '-[:POSTED_BY]->(u) ' +
-        'RETURN p',
+          'CREATE (p:Post {title: $title, body: $body, visibility: $visibility})' +
+          '-[:POSTED_BY]->(u) ' +
+          'RETURN p',
         { userID, title, body, visibility }
       )
       return res.status(200).json({
