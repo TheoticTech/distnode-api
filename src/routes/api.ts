@@ -31,11 +31,14 @@ apiRoutes.get(
 
       return res.status(200).json({
         getPostsSuccess: 'Post obtained successfully',
-        posts: results.records.map((r) => r.get('p').properties)
+        posts: results.records.map((r) => {
+          const nodeVal = r.get('p')
+          return { id: nodeVal.identity.low, ...nodeVal.properties }
+        })
       })
     } catch (err) {
       return res.status(500).json({
-        createPostError: 'An unknown error occurred, please try again later'
+        getPostError: 'An unknown error occurred, please try again later'
       })
     }
   }
