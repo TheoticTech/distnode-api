@@ -4,6 +4,7 @@ import express from 'express'
 // Local
 import { authMiddleware } from '../middleware/auth'
 import { csrfMiddleware } from '../middleware/csrf'
+import { uploadMiddleware } from '../middleware/upload'
 import queryNeo4j from '../utils/queryNeo4j'
 
 const apiRoutes = express.Router()
@@ -45,7 +46,7 @@ apiRoutes.get(
 )
 
 apiRoutes.post(
-  '/posts/create',
+  '/posts/add',
   [authMiddleware, csrfMiddleware],
   async (
     req: DefaultAPIRequest,
@@ -57,7 +58,7 @@ apiRoutes.post(
 
       if (!title || !body || !visibility) {
         return res.status(400).json({
-          createPostError: 'Missing title, body or visibility'
+          addPostError: 'Missing title, body or visibility'
         })
       }
 
@@ -70,12 +71,36 @@ apiRoutes.post(
         { userID, title, body, visibility }
       )
       return res.status(200).json({
-        createPostSuccess: 'Post created successfully'
+        addPostSuccess: 'Post created successfully'
       })
     } catch (err) {
       return res.status(500).json({
-        createPostError: 'An unknown error occurred, please try again later'
+        addPostError: 'An unknown error occurred, please try again later'
       })
+    }
+  }
+)
+
+apiRoutes.post(
+  '/media/upload',
+  [authMiddleware, uploadMiddleware, csrfMiddleware],
+  async (
+    req: DefaultAPIRequest,
+    res: express.Response
+  ): Promise<express.Response> => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          mediaUploadError: 'Upload file must be provided'
+        })
+      } else {
+        return res.status(201).json({
+          mediaUploadSuccess: 'File uploaded successfully',
+          file: req.file
+        })
+      }
+    } catch (err) {
+      res.status(500).send(err)
     }
   }
 )

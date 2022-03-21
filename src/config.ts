@@ -1,5 +1,10 @@
 const ENVIRONMENT = process.env.NODE_ENV || 'development'
 const CSRF_TOKEN_SECRET = process.env.CSRF_TOKEN_SECRET
+const DO_SPACE_ENDPOINT =
+  process.env.DO_SPACE_ENDPOINT || 'sfo3.digitaloceanspaces.com'
+const DO_SPACE_BUCKET = process.env.DO_SPACE_BUCKET || 'distnode-static-dev'
+const DO_SPACE_BUCKET_ACCESS_KEY = process.env.DO_SPACE_BUCKET_ACCESS_KEY
+const DO_SPACE_BUCKET_SECRET_KEY = process.env.DO_SPACE_BUCKET_SECRET_KEY
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:3002'
 const JWT_ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_TOKEN_SECRET
 const MONGO_CA_CERT = process.env.MONGO_CA_CERT
@@ -12,6 +17,10 @@ const PORT = process.env.PORT || 3001
 export {
   ENVIRONMENT,
   CSRF_TOKEN_SECRET,
+  DO_SPACE_ENDPOINT,
+  DO_SPACE_BUCKET,
+  DO_SPACE_BUCKET_ACCESS_KEY,
+  DO_SPACE_BUCKET_SECRET_KEY,
   FRONTEND_ORIGIN,
   JWT_ACCESS_TOKEN_SECRET,
   MONGO_CA_CERT,
