@@ -16,6 +16,7 @@
     "@types/express": "^4.17.13",
     "@types/mocha": "^9.1.0",
     "@types/multer": "^1.4.7",
+    "@types/sanitize-html": "^2.6.2",
     "@typescript-eslint/eslint-plugin": "^5.11.0",
     "@typescript-eslint/parser": "^5.11.0",
     "chai": "^4.3.6",
@@ -38,6 +39,7 @@
     "jsonwebtoken": "^8.5.1",
     "multer": "^1.4.4",
     "multer-s3": "^2.10.0",
-    "neo4j-driver": "^4.4.3"
+    "neo4j-driver": "^4.4.3",
+    "sanitize-html": "^2.7.0"
   }
 }
