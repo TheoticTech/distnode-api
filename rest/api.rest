@@ -26,6 +26,10 @@ content-type: application/json
     "csrfToken": "{{csrfToken}}"
 }
 
+### Get user's ID
+GET http://localhost:3001/api/user/id/
+content-type: application/json
+
 ### Get user's posts
 GET http://localhost:3001/api/posts/
 content-type: application/json

@@ -13,9 +13,9 @@ chai.use(chaiHttp)
 chai.should()
 
 describe('API routes', function () {
-  describe('GET /api/whoami', function () {
+  describe('GET /api/user/id', function () {
     const validAccessToken = jwt.sign(
-      { user_id: 'johndoe' },
+      { user_id: '123456789' },
       JWT_ACCESS_TOKEN_SECRET,
       {
         expiresIn: '10s'
@@ -23,7 +23,7 @@ describe('API routes', function () {
     )
 
     const expiredAccessToken = jwt.sign(
-      { user_id: 'johndoe' },
+      { user_id: '123456789' },
       JWT_ACCESS_TOKEN_SECRET,
       {
         expiresIn: '-1s'
@@ -33,7 +33,7 @@ describe('API routes', function () {
     it('should return 200 and userID if provided valid token', (done) => {
       chai
         .request(app)
-        .get('/api/whoami')
+        .get('/api/user/id')
         .set('Cookie', `accessToken=${validAccessToken}`)
         .send({})
         .end((err, res) => {
@@ -41,7 +41,11 @@ describe('API routes', function () {
             done(err)
           }
           res.should.have.status(200)
-          res.text.should.equal('johndoe')
+          res.body.should.have.property(
+            'getUserIDSuccess',
+            'User ID obtained successfully'
+          )
+          res.body.should.have.property('userID', '123456789')
           done()
         })
     })
@@ -49,7 +53,7 @@ describe('API routes', function () {
     it('should return 401 if provided expired token', (done) => {
       chai
         .request(app)
-        .get('/api/whoami')
+        .get('/api/user/id')
         .set('Cookie', `accessToken=${expiredAccessToken}`)
         .send({})
         .end((err, res) => {
@@ -65,7 +69,7 @@ describe('API routes', function () {
     it('should return 401 if provided invalid token', (done) => {
       chai
         .request(app)
-        .get('/api/whoami')
+        .get('/api/user/id')
         .set('Cookie', 'accessToken=invalid-token')
         .send({})
         .end((err, res) => {
@@ -81,7 +85,7 @@ describe('API routes', function () {
     it('should return 403 if token not provided', (done) => {
       chai
         .request(app)
-        .get('/api/whoami')
+        .get('/api/user/id')
         .send({})
         .end((err, res) => {
           if (err) {
