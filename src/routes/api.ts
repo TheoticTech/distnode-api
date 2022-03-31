@@ -1,15 +1,12 @@
 // Third party
 import express from 'express'
-import sanitizeHtml from 'sanitize-html'
 
 // Local
 import { authMiddleware } from '../middleware/auth'
 import { csrfMiddleware } from '../middleware/csrf'
+import { sanitizeBody } from '../utils/sanitize'
 import { uploadMiddleware } from '../middleware/upload'
 import queryNeo4j from '../utils/queryNeo4j'
-
-// Configurations
-import { DO_SPACE_ENDPOINT, DO_SPACE_BUCKET } from '../config'
 
 const apiRoutes = express.Router()
 
@@ -46,6 +43,102 @@ apiRoutes.get(
   }
 )
 
+// Obtain post by ID
+apiRoutes.get(
+  '/post/:postID/',
+  async (
+    req: DefaultAPIRequest,
+    res: express.Response
+  ): Promise<express.Response> => {
+    try {
+      const { postID } = req.params
+
+      const results = await queryNeo4j(
+        req.app.locals.driver,
+        'MATCH (p:Post)-[:POSTED_BY]->(u:User) WHERE id(p) = $postID return p, u',
+        { postID: parseInt(postID) }
+      )
+
+      if (results.records.length === 0) {
+        return res.status(404).json({
+          getPostError: 'Post not found'
+        })
+      }
+
+      const nodePostVal = results.records[0].get('p')
+      const nodeUserVal = results.records[0].get('u')
+
+      return res.status(200).json({
+        getPostSuccess: 'Posts obtained successfully',
+        user: {
+          userID: nodeUserVal.properties.userID,
+          username: nodeUserVal.properties.username,
+          createdAt: nodeUserVal.properties.created_at.toNumber(),
+          bio: nodeUserVal.properties.bio,
+          avatar: nodeUserVal.properties.avatar
+        },
+        post: {
+          postID: nodePostVal.identity.low,
+          createdAt: nodePostVal.properties.created_at.toNumber(),
+          description: nodePostVal.properties.description,
+          title: nodePostVal.properties.title,
+          body: nodePostVal.properties.body,
+          thumbnail: nodePostVal.properties.thumbnail
+        }
+      })
+    } catch (err) {
+      console.error(err)
+      return res.status(500).json({
+        getPostError: 'An unknown error occurred, please try again later'
+      })
+    }
+  }
+)
+
+// Obtain posts created by same author as post with provided ID
+apiRoutes.get(
+  '/post/:postID/related/author',
+  async (
+    req: DefaultAPIRequest,
+    res: express.Response
+  ): Promise<express.Response> => {
+    try {
+      const { postID } = req.params
+
+      const results = await queryNeo4j(
+        req.app.locals.driver,
+        'MATCH (p:Post)-[:POSTED_BY]->(u:User) WHERE id(p) = $postID ' +
+          'MATCH (po: Post)-[:POSTED_BY]->(u:User) WHERE id(po) <> id(p) ' +
+          'return po, u LIMIT 6',
+        { postID: parseInt(postID) }
+      )
+
+      return res.status(200).json({
+        getPostsSuccess: 'Posts obtained successfully',
+        posts: results.records.map((r) => {
+          const nodePostVal = r.get('po')
+          const nodeUserVal = r.get('u')
+          return {
+            userID: nodeUserVal.properties.userID,
+            username: nodeUserVal.properties.username,
+            avatar: nodeUserVal.properties.avatar,
+            postID: nodePostVal.identity.low,
+            postCreatedAt: nodePostVal.properties.created_at.toNumber(),
+            description: nodePostVal.properties.description,
+            title: nodePostVal.properties.title,
+            thumbnail: nodePostVal.properties.thumbnail
+          }
+        })
+      })
+    } catch (err) {
+      console.error(err)
+      return res.status(500).json({
+        getPostsError: 'An unknown error occurred, please try again later'
+      })
+    }
+  }
+)
+
 // Obtain newest posts
 apiRoutes.get(
   '/posts/',
@@ -56,7 +149,7 @@ apiRoutes.get(
     try {
       const results = await queryNeo4j(
         req.app.locals.driver,
-        'MATCH (p:Post)--(u:User) return p, u ORDER BY p.created_at DESC',
+        'MATCH (p:Post)-[:POSTED_BY]->(u:User) return p, u ORDER BY p.created_at DESC',
         {}
       )
 
@@ -72,7 +165,8 @@ apiRoutes.get(
             postID: nodePostVal.identity.low,
             postCreatedAt: nodePostVal.properties.created_at.toNumber(),
             description: nodePostVal.properties.description,
-            title: nodePostVal.properties.title
+            title: nodePostVal.properties.title,
+            thumbnail: nodePostVal.properties.thumbnail
           }
         })
       })
@@ -94,7 +188,7 @@ apiRoutes.post(
   ): Promise<express.Response> => {
     try {
       const { userID } = req
-      const { title, description, body } = req.body
+      const { title, description, body, thumbnail } = req.body
 
       if (!title) {
         return res.status(400).json({
@@ -114,60 +208,7 @@ apiRoutes.post(
         })
       }
 
-      const sanitizedBody = sanitizeHtml(body, {
-        allowedAttributes: {
-          iframe: ['src', 'width', 'height', 'frameborder', 'allowfullscreen'],
-          img: ['src', 'width', 'height'],
-          audio: ['controls', 'src'],
-          video: ['controls', 'width', 'height', 'src', 'poster'],
-          span: ['style'],
-          p: ['style']
-        },
-        allowedIframeHostnames: ['www.youtube.com'],
-        allowedSchemesByTag: {
-          img: ['https'],
-          iframe: ['https'],
-          video: ['https'],
-          audio: ['https']
-        },
-        allowedStyles: {
-          '*': {
-            'text-align': [/^left$/, /^right$/, /^center$/, /^justify$/],
-            'text-decoration': [/^underline$/],
-            'padding-left': [/[0-9]{1,4}px$/]
-          },
-          span: {
-            'background-color': [/^rgb\([0-9]{0,3}, [0-9]{0,3}, [0-9]{0,3}\)$/]
-          }
-        },
-        allowedTags: sanitizeHtml.defaults.allowedTags.concat([
-          'iframe',
-          'img',
-          'audio',
-          'video'
-        ]),
-        disallowedTagsMode: 'escape',
-        exclusiveFilter: (frame) => {
-          // Only allow images, audio, and video tags with DistNode static src
-          if (
-            frame.tag === 'img' ||
-            frame.tag === 'audio' ||
-            frame.tag === 'video'
-          ) {
-            const re = new RegExp(
-              `^(https:\\/\\/${DO_SPACE_BUCKET}\\.${DO_SPACE_ENDPOINT.replace(
-                '.',
-                '\\.'
-              )}\\/uploads\\/([A-Za-z0-9\\-\\._~:\\/\\?#\\[\\]@!$&'\\(\\)\\*\\+,;\\=]*)?)$`
-            )
-            if (!re.test(frame.attribs.src)) {
-              console.log('Filtering out', frame.attribs.src)
-            }
-            return !re.test(frame.attribs.src)
-          }
-        },
-        selfClosing: ['img', 'audio', 'video']
-      })
+      const sanitizedBody = sanitizeBody(body)
 
       await queryNeo4j(
         req.app.locals.driver,
@@ -176,18 +217,144 @@ apiRoutes.post(
           'title: $title, ' +
           'description: $description, ' +
           'body: $sanitizedBody, ' +
+          `${thumbnail ? 'thumbnail: $thumbnail, ' : ''}` +
           'created_at: TIMESTAMP()' +
           '})' +
           '-[:POSTED_BY]->(u) ' +
           'RETURN p',
-        { userID, title, description, sanitizedBody }
+        { userID, title, description, sanitizedBody, thumbnail }
       )
       return res.status(200).json({
         addPostSuccess: 'Post created successfully'
       })
     } catch (err) {
+      console.error(err)
       return res.status(500).json({
         addPostError: 'An unknown error occurred, please try again later'
+      })
+    }
+  }
+)
+
+apiRoutes.post(
+  '/posts/edit/:postID',
+  [authMiddleware, csrfMiddleware],
+  async (
+    req: DefaultAPIRequest,
+    res: express.Response
+  ): Promise<express.Response> => {
+    try {
+      const { userID } = req
+      const { title, description, body, thumbnail } = req.body
+      const { postID } = req.params
+
+      if (!title) {
+        return res.status(400).json({
+          editPostError: 'Post title must not be empty'
+        })
+      }
+
+      if (!body) {
+        return res.status(400).json({
+          editPostError: 'Post body must not be empty'
+        })
+      }
+
+      if (!description) {
+        return res.status(400).json({
+          editPostError: 'Post description must not be empty'
+        })
+      }
+
+      const results = await queryNeo4j(
+        req.app.locals.driver,
+        'MATCH (p:Post)-[:POSTED_BY]->(u:User) WHERE id(p) = $postID return p, u',
+        { postID: parseInt(postID) }
+      )
+
+      if (results.records.length === 0) {
+        return res.status(404).json({
+          editPostError: 'Post not found'
+        })
+      }
+
+      const nodeUserVal = results.records[0].get('u')
+
+      if (nodeUserVal.properties.userID !== userID) {
+        return res.status(403).json({
+          editPostError: 'You are not authorized to edit this post'
+        })
+      }
+
+      const sanitizedBody = sanitizeBody(body)
+
+      await queryNeo4j(
+        req.app.locals.driver,
+        'MATCH (p:Post) WHERE id(p) = $postID SET ' +
+          'p.title = $title, ' +
+          'p.description = $description, ' +
+          'p.body = $sanitizedBody' +
+          `${thumbnail ? ', p.thumbnail = $thumbnail ' : ' '}` +
+          'RETURN p',
+        { postID: parseInt(postID), title, description, sanitizedBody, thumbnail }
+      )
+      return res.status(200).json({
+        editPostSuccess: 'Post edited successfully'
+      })
+    } catch (err) {
+      console.error(err)
+      return res.status(500).json({
+        editPostError: 'An unknown error occurred, please try again later'
+      })
+    }
+  }
+)
+
+apiRoutes.delete(
+  '/posts/delete/:postID',
+  [authMiddleware, csrfMiddleware],
+  async (
+    req: DefaultAPIRequest,
+    res: express.Response
+  ): Promise<express.Response> => {
+    try {
+      const { userID } = req
+      const { postID } = req.params
+
+      const results = await queryNeo4j(
+        req.app.locals.driver,
+        'MATCH (p:Post)-[:POSTED_BY]->(u:User) WHERE id(p) = $postID return p, u',
+        { postID: parseInt(postID) }
+      )
+
+      if (results.records.length === 0) {
+        return res.status(404).json({
+          deletePostError: 'Post not found'
+        })
+      }
+
+      const nodeUserVal = results.records[0].get('u')
+
+      if (nodeUserVal.properties.userID !== userID) {
+        return res.status(403).json({
+          deletePostError: 'You are not authorized to delete this post'
+        })
+      }
+
+      await queryNeo4j(
+        req.app.locals.driver,
+        'MATCH (p:Post) WHERE id(p) = $postID ' +
+          'DETACH DELETE p',
+        { postID: parseInt(postID) }
+      )
+
+      return res.status(200).json({
+        deletePostSuccess: 'Post deleted successfully'
+      })
+    } catch (err) {
+      console.error(err)
+      return res.status(500).json({
+        deletePostError: 'An unknown error occurred, please try again later'
       })
     }
   }
@@ -201,7 +368,7 @@ apiRoutes.post(
     res: express.Response
   ): Promise<express.Response> => {
     try {
-      const { userID } = req
+      const { userID } = req // From auth middleware
       const { bio, avatar } = req.body
 
       if (!bio && !avatar) {
@@ -333,7 +500,8 @@ apiRoutes.get(
               postID: nodePostVal.identity.low,
               postCreatedAt: nodePostVal.properties.created_at.toNumber(),
               description: nodePostVal.properties.description,
-              title: nodePostVal.properties.title
+              title: nodePostVal.properties.title,
+              thumbnail: nodePostVal.properties.thumbnail
             }
           })
       })
