@@ -296,7 +296,13 @@ apiRoutes.post(
           'p.body = $sanitizedBody' +
           `${thumbnail ? ', p.thumbnail = $thumbnail ' : ' '}` +
           'RETURN p',
-        { postID: parseInt(postID), title, description, sanitizedBody, thumbnail }
+        {
+          postID: parseInt(postID),
+          title,
+          description,
+          sanitizedBody,
+          thumbnail
+        }
       )
       return res.status(200).json({
         editPostSuccess: 'Post edited successfully'
@@ -343,8 +349,7 @@ apiRoutes.delete(
 
       await queryNeo4j(
         req.app.locals.driver,
-        'MATCH (p:Post) WHERE id(p) = $postID ' +
-          'DETACH DELETE p',
+        'MATCH (p:Post) WHERE id(p) = $postID ' + 'DETACH DELETE p',
         { postID: parseInt(postID) }
       )
 

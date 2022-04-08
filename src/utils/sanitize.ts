@@ -7,12 +7,20 @@ import { DO_SPACE_ENDPOINT, DO_SPACE_BUCKET } from '../config'
 const sanitizeBody = (body) => {
   return sanitizeHtml(body, {
     allowedAttributes: {
-      iframe: ['src', 'width', 'height', 'frameborder', 'allowfullscreen'],
+      iframe: [
+        'src',
+        'width',
+        'height',
+        'frameborder',
+        'allowfullscreen',
+        'allow'
+      ],
       img: ['src', 'width', 'height'],
       audio: ['controls', 'src'],
       video: ['controls', 'width', 'height', 'style', 'src', 'poster'],
       span: ['style'],
-      p: ['style']
+      p: ['style'],
+      div: ['class', 'style']
     },
     allowedIframeHostnames: ['www.youtube.com'],
     allowedSchemesByTag: {
@@ -39,10 +47,10 @@ const sanitizeBody = (body) => {
     ]),
     disallowedTagsMode: 'escape',
     transformTags: {
-      'video': sanitizeHtml.simpleTransform(
-          'video',
-          {width: '77%', height: 'auto'}
-        ),
+      video: sanitizeHtml.simpleTransform('video', {
+        width: '90%',
+        height: 'auto'
+      })
     },
     exclusiveFilter: (frame) => {
       // Only allow images, audio, and video tags with DistNode static src
