@@ -50,7 +50,8 @@ const sanitizeBody = (body) => {
       video: sanitizeHtml.simpleTransform('video', {
         width: '90%',
         height: 'auto'
-      })
+      }),
+      br: 'p'
     },
     exclusiveFilter: (frame) => {
       // Only allow images, audio, and video tags with DistNode static src
