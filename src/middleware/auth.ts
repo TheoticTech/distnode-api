@@ -33,4 +33,22 @@ const authMiddleware = (req, res, next): express.Response => {
   return next()
 }
 
-export { authMiddleware }
+/*
+Will not reject requests if the user is not authenticated.
+Used for endpoints where user info may be helpful, such as
+the home page, but not required.
+*/
+const optionalAuthMiddleware = (req, res, next): express.Response => {
+  const accessToken = req.cookies?.accessToken
+  try {
+    const decoded = jwt.verify(accessToken, JWT_ACCESS_TOKEN_SECRET, {
+      ignoreExpiration: true
+    })
+    req.userID = decoded.user_id
+  } catch (err) {
+    return next()
+  }
+  return next()
+}
+
+export { authMiddleware, optionalAuthMiddleware }

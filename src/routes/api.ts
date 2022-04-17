@@ -2,8 +2,9 @@
 import express from 'express'
 
 // Local
-import { authMiddleware } from '../middleware/auth'
+import { authMiddleware, optionalAuthMiddleware } from '../middleware/auth'
 import { csrfMiddleware } from '../middleware/csrf'
+import { Reactions } from '../types/Reactions'
 import { sanitizeBody } from '../utils/sanitize'
 import { uploadMiddleware } from '../middleware/upload'
 import queryNeo4j from '../utils/queryNeo4j'
@@ -140,36 +141,81 @@ apiRoutes.get(
 )
 
 // Obtain newest posts
-apiRoutes.get(
+apiRoutes.post(
   '/posts/',
+  optionalAuthMiddleware,
   async (
     req: DefaultAPIRequest,
     res: express.Response
   ): Promise<express.Response> => {
     try {
-      const results = await queryNeo4j(
-        req.app.locals.driver,
-        'MATCH (p:Post)-[:POSTED_BY]->(u:User) return p, u ORDER BY p.created_at DESC',
-        {}
-      )
+      const { userID } = req
+      const { currentPosts } = req.body
 
-      return res.status(200).json({
-        getPostsSuccess: 'Posts obtained successfully',
-        posts: results.records.map((r) => {
-          const nodePostVal = r.get('p')
-          const nodeUserVal = r.get('u')
-          return {
-            userID: nodeUserVal.properties.userID,
-            username: nodeUserVal.properties.username,
-            avatar: nodeUserVal.properties.avatar,
-            postID: nodePostVal.identity.low,
-            postCreatedAt: nodePostVal.properties.created_at.toNumber(),
-            description: nodePostVal.properties.description,
-            title: nodePostVal.properties.title,
-            thumbnail: nodePostVal.properties.thumbnail
-          }
+      if (userID) {
+        const results = await queryNeo4j(
+          req.app.locals.driver,
+          'MATCH (p:Post)-[:POSTED_BY]->(u:User) ' +
+            'WHERE NOT(ID(p) IN $currentPosts) ' +
+            'MATCH (activeUser:User {userID: $userID}) ' +
+            'OPTIONAL MATCH (activeUser)-[:ReactionFrom]->(r:Reaction)-[:ReactionTo]->(p) ' +
+            'return p, u, r ' +
+            'ORDER BY p.created_at ' +
+            'DESC LIMIT 9',
+          { currentPosts, userID }
+        )
+
+        return res.status(200).json({
+          getPostsSuccess: 'Posts obtained successfully',
+          posts: results.records.map((r) => {
+            const nodePostVal = r.get('p')
+            const nodeUserVal = r.get('u')
+            const nodeReactionVal = r.get('r')
+            const reaction = nodeReactionVal
+              ? nodeReactionVal.properties.type
+              : null
+            return {
+              userID: nodeUserVal.properties.userID,
+              username: nodeUserVal.properties.username,
+              avatar: nodeUserVal.properties.avatar,
+              postID: nodePostVal.identity.low,
+              postCreatedAt: nodePostVal.properties.created_at.toNumber(),
+              description: nodePostVal.properties.description,
+              title: nodePostVal.properties.title,
+              thumbnail: nodePostVal.properties.thumbnail,
+              ...(reaction && { reaction })
+            }
+          })
         })
-      })
+      } else {
+        const results = await queryNeo4j(
+          req.app.locals.driver,
+          'MATCH (p:Post)-[:POSTED_BY]->(u:User) ' +
+            'WHERE NOT(ID(p) IN $currentPosts) ' +
+            'return p, u ' +
+            'ORDER BY p.created_at ' +
+            'DESC LIMIT 9',
+          { currentPosts }
+        )
+
+        return res.status(200).json({
+          getPostsSuccess: 'Posts obtained successfully',
+          posts: results.records.map((r) => {
+            const nodePostVal = r.get('p')
+            const nodeUserVal = r.get('u')
+            return {
+              userID: nodeUserVal.properties.userID,
+              username: nodeUserVal.properties.username,
+              avatar: nodeUserVal.properties.avatar,
+              postID: nodePostVal.identity.low,
+              postCreatedAt: nodePostVal.properties.created_at.toNumber(),
+              description: nodePostVal.properties.description,
+              title: nodePostVal.properties.title,
+              thumbnail: nodePostVal.properties.thumbnail
+            }
+          })
+        })
+      }
     } catch (err) {
       console.error(err)
       return res.status(500).json({
@@ -407,6 +453,74 @@ apiRoutes.post(
       console.error(err)
       return res.status(500).json({
         editProfileError: 'An unknown error occurred, please try again later'
+      })
+    }
+  }
+)
+
+apiRoutes.post(
+  '/posts/:postID/react',
+  [authMiddleware],
+  async (
+    req: DefaultAPIRequest,
+    res: express.Response
+  ): Promise<express.Response> => {
+    try {
+      const { userID } = req // From auth middleware
+      const { postID } = req.params
+      const { reaction } = req.body
+
+      if (!reaction || !Object.keys(Reactions).includes(reaction)) {
+        return res.status(400).json({
+          reactionError: 'A valid reaction must be provided'
+        })
+      }
+
+      const currentReaction = await queryNeo4j(
+        req.app.locals.driver,
+        'MATCH (p:Post) WHERE id(p) = $postID ' +
+          'OPTIONAL MATCH (u:User {userID: $userID})' +
+          '-[rf:ReactionFrom]->(r:Reaction)-[:ReactionTo]->' +
+          '(p) RETURN r',
+        { userID, postID: parseInt(postID), reaction }
+      )
+
+      if (currentReaction.records[0].get('r')) {
+        // Delete existing reaction
+        await queryNeo4j(
+          req.app.locals.driver,
+          'MATCH (p:Post) WHERE id(p) = $postID ' +
+            'OPTIONAL MATCH (u:User {userID: $userID})' +
+            '-[rf:ReactionFrom]->(r:Reaction)-[:ReactionTo]->' +
+            '(p) DETACH DELETE r',
+          { userID, postID: parseInt(postID), reaction }
+        )
+        if (currentReaction.records[0].get('r').properties.type === reaction) {
+          // Return early if reaction is the same, such as user clicking
+          // 'like' a second time. This is to prevent recreation of reaction.
+          return res.status(200).json({
+            reactionSuccess: 'Reaction successfully removed'
+          })
+        }
+      }
+
+      const results = await queryNeo4j(
+        req.app.locals.driver,
+        'MATCH (u:User {userID: $userID}) ' +
+          'MATCH (p:Post) WHERE id(p) = $postID ' +
+          'CREATE (r:Reaction {type: $reaction }) ' +
+          'CREATE (u)-[rf:ReactionFrom]->(r) ' +
+          'CREATE (r)-[rt:ReactionTo]->(p)',
+        { userID, postID: parseInt(postID), reaction }
+      )
+
+      return res.status(200).json({
+        reactionSuccess: 'Reacted successfully'
+      })
+    } catch (err) {
+      console.error(err)
+      return res.status(500).json({
+        reactionError: 'An unknown error occurred, please try again later'
       })
     }
   }
