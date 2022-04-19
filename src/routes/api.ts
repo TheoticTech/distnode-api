@@ -47,17 +47,27 @@ apiRoutes.get(
 // Obtain post by ID
 apiRoutes.get(
   '/post/:postID/',
+  optionalAuthMiddleware,
   async (
     req: DefaultAPIRequest,
     res: express.Response
   ): Promise<express.Response> => {
     try {
+      const { userID } = req
       const { postID } = req.params
 
       const results = await queryNeo4j(
         req.app.locals.driver,
-        'MATCH (p:Post)-[:POSTED_BY]->(u:User) WHERE id(p) = $postID return p, u',
-        { postID: parseInt(postID) }
+        'MATCH (p:Post)-[:POSTED_BY]->(u:User) ' +
+        'WHERE id(p) = $postID ' +
+        'MATCH (activeUser:User {userID: $userID}) ' +
+        'OPTIONAL MATCH (activeUser)-[:ReactionFrom]->(r:Reaction)-[:ReactionTo]->(p) ' +
+        'OPTIONAL MATCH (rootComment:Comment)-[:CommentTo]->(p) ' +
+        'OPTIONAL MATCH (rootCommentFrom:User)-[:CommentFrom]->(rootComment) ' +
+        'OPTIONAL MATCH (replyComment:Comment)-[commentToCommentRelationship:CommentTo *0..7]->(rootComment) ' +
+        'OPTIONAL MATCH (replyCommentFrom:User)-[:CommentFrom *0..7]->(replyComment) ' +
+        'RETURN p, u, r, rootComment, rootCommentFrom, replyComment, replyCommentFrom, commentToCommentRelationship',
+        { userID, postID: parseInt(postID) }
       )
 
       if (results.records.length === 0) {
@@ -68,6 +78,24 @@ apiRoutes.get(
 
       const nodePostVal = results.records[0].get('p')
       const nodeUserVal = results.records[0].get('u')
+      const nodeReactionVal = results.records[0].get('r')
+      const reaction = nodeReactionVal
+        ? nodeReactionVal.properties.type
+        : null
+      const commentVals = results.records.map((r) => {
+        const rootCommentVal = r.get('rootComment')
+        const rootCommentFromVal = r.get('rootCommentFrom')
+        const replyCommentVal = r.get('replyComment')
+        const replyCommentFromVal = r.get('replyCommentFrom')
+        const commentToCommentRelationshipVal = r.get('commentToCommentRelationship')
+        return {
+          ...(rootCommentVal && {rootComment: rootCommentVal}),
+          ...(rootCommentFromVal && {rootCommentFrom: rootCommentFromVal}),
+          ...(replyCommentVal && {replyComment: replyCommentVal}),
+          ...(replyCommentFromVal && {replyCommentFrom: replyCommentFromVal}),
+          ...(commentToCommentRelationshipVal && {commentToCommentRelationship: commentToCommentRelationshipVal})
+        }
+      })
 
       return res.status(200).json({
         getPostSuccess: 'Posts obtained successfully',
@@ -84,8 +112,10 @@ apiRoutes.get(
           description: nodePostVal.properties.description,
           title: nodePostVal.properties.title,
           body: nodePostVal.properties.body,
-          thumbnail: nodePostVal.properties.thumbnail
-        }
+          thumbnail: nodePostVal.properties.thumbnail,
+          ...(reaction && { reaction })
+        },
+        ...(commentVals.every(cv => Object.keys(cv).length > 0) && { comments: commentVals }) 
       })
     } catch (err) {
       console.error(err)
