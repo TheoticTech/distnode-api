@@ -53,20 +53,20 @@ apiRoutes.get(
     res: express.Response
   ): Promise<express.Response> => {
     try {
-      const { userID } = req
+      const { userID = 'DNE' } = req
       const { postID } = req.params
 
       const results = await queryNeo4j(
         req.app.locals.driver,
         'MATCH (p:Post)-[:POSTED_BY]->(u:User) ' +
-        'WHERE id(p) = $postID ' +
-        'MATCH (activeUser:User {userID: $userID}) ' +
-        'OPTIONAL MATCH (activeUser)-[:ReactionFrom]->(r:Reaction)-[:ReactionTo]->(p) ' +
-        'OPTIONAL MATCH (rootComment:Comment)-[:CommentTo]->(p) ' +
-        'OPTIONAL MATCH (rootCommentFrom:User)-[:CommentFrom]->(rootComment) ' +
-        'OPTIONAL MATCH (replyComment:Comment)-[commentToCommentRelationship:CommentTo *0..7]->(rootComment) ' +
-        'OPTIONAL MATCH (replyCommentFrom:User)-[:CommentFrom *0..7]->(replyComment) ' +
-        'RETURN p, u, r, rootComment, rootCommentFrom, replyComment, replyCommentFrom, commentToCommentRelationship',
+          'WHERE id(p) = $postID ' +
+          'OPTIONAL MATCH (activeUser:User {userID: $userID}) ' +
+          'OPTIONAL MATCH (activeUser)-[:ReactionFrom]->(r:Reaction)-[:ReactionTo]->(p) ' +
+          'OPTIONAL MATCH (rootComment:Comment)-[:CommentTo]->(p) ' +
+          'OPTIONAL MATCH (rootCommentFrom:User)-[:CommentFrom]->(rootComment) ' +
+          'OPTIONAL MATCH (replyComment:Comment)-[commentToCommentRelationship:CommentTo *0..7]->(rootComment) ' +
+          'OPTIONAL MATCH (replyCommentFrom:User)-[:CommentFrom *0..7]->(replyComment) ' +
+          'RETURN p, u, r, rootComment, rootCommentFrom, replyComment, replyCommentFrom, commentToCommentRelationship',
         { userID, postID: parseInt(postID) }
       )
 
@@ -79,21 +79,45 @@ apiRoutes.get(
       const nodePostVal = results.records[0].get('p')
       const nodeUserVal = results.records[0].get('u')
       const nodeReactionVal = results.records[0].get('r')
-      const reaction = nodeReactionVal
-        ? nodeReactionVal.properties.type
-        : null
+      const reaction = nodeReactionVal ? nodeReactionVal.properties.type : null
       const commentVals = results.records.map((r) => {
         const rootCommentVal = r.get('rootComment')
         const rootCommentFromVal = r.get('rootCommentFrom')
         const replyCommentVal = r.get('replyComment')
         const replyCommentFromVal = r.get('replyCommentFrom')
-        const commentToCommentRelationshipVal = r.get('commentToCommentRelationship')
+        const commentToCommentRelationshipVal = r.get(
+          'commentToCommentRelationship'
+        )
         return {
-          ...(rootCommentVal && {rootComment: rootCommentVal}),
-          ...(rootCommentFromVal && {rootCommentFrom: rootCommentFromVal}),
-          ...(replyCommentVal && {replyComment: replyCommentVal}),
-          ...(replyCommentFromVal && {replyCommentFrom: replyCommentFromVal}),
-          ...(commentToCommentRelationshipVal && {commentToCommentRelationship: commentToCommentRelationshipVal})
+          ...(rootCommentVal && {
+            rootComment: {
+              ...rootCommentVal,
+              created_at: rootCommentVal.properties.created_at.toNumber()
+            }
+          }),
+          ...(rootCommentFromVal && {
+            rootCommentFrom: {
+              userID: rootCommentFromVal.properties.userID,
+              username: rootCommentFromVal.properties.username,
+              avatar: rootCommentFromVal.properties.avatar
+            }
+          }),
+          ...(replyCommentVal && {
+            replyComment: {
+              ...replyCommentVal,
+              created_at: replyCommentVal.properties.created_at.toNumber()
+            }
+          }),
+          ...(replyCommentFromVal && {
+            replyCommentFrom: {
+              userID: replyCommentFromVal.properties.userID,
+              username: replyCommentFromVal.properties.username,
+              avatar: replyCommentFromVal.properties.avatar
+            }
+          }),
+          ...(commentToCommentRelationshipVal && {
+            commentToCommentRelationship: commentToCommentRelationshipVal
+          })
         }
       })
 
@@ -115,7 +139,9 @@ apiRoutes.get(
           thumbnail: nodePostVal.properties.thumbnail,
           ...(reaction && { reaction })
         },
-        ...(commentVals.every(cv => Object.keys(cv).length > 0) && { comments: commentVals }) 
+        ...(commentVals.every((cv) => Object.keys(cv).length > 0) && {
+          comments: commentVals
+        })
       })
     } catch (err) {
       console.error(err)
@@ -179,7 +205,7 @@ apiRoutes.post(
     res: express.Response
   ): Promise<express.Response> => {
     try {
-      const { userID } = req
+      const { userID = 'DNE' } = req
       const { currentPosts } = req.body
 
       if (userID) {
@@ -187,7 +213,7 @@ apiRoutes.post(
           req.app.locals.driver,
           'MATCH (p:Post)-[:POSTED_BY]->(u:User) ' +
             'WHERE NOT(ID(p) IN $currentPosts) ' +
-            'MATCH (activeUser:User {userID: $userID}) ' +
+            'OPTIONAL MATCH (activeUser:User {userID: $userID}) ' +
             'OPTIONAL MATCH (activeUser)-[:ReactionFrom]->(r:Reaction)-[:ReactionTo]->(p) ' +
             'return p, u, r ' +
             'ORDER BY p.created_at ' +
@@ -551,6 +577,137 @@ apiRoutes.post(
       console.error(err)
       return res.status(500).json({
         reactionError: 'An unknown error occurred, please try again later'
+      })
+    }
+  }
+)
+
+apiRoutes.post(
+  '/posts/:postID/comment',
+  [authMiddleware, csrfMiddleware],
+  async (
+    req: DefaultAPIRequest,
+    res: express.Response
+  ): Promise<express.Response> => {
+    try {
+      const { userID } = req // From auth middleware
+      const { postID } = req.params
+      const { comment } = req.body
+
+      if (!comment) {
+        return res.status(400).json({
+          commentError: 'A comment must be provided'
+        })
+      }
+
+      await queryNeo4j(
+        req.app.locals.driver,
+
+        'MATCH (u:User {userID: $userID}) ' +
+          'MATCH (p:Post) WHERE id(p) = $postID ' +
+          'CREATE (c:Comment {text: $comment, created_at: TIMESTAMP()}) ' +
+          'CREATE (u)-[cf:CommentFrom]->(c) ' +
+          'CREATE (c)-[ct:CommentTo]->(p)',
+        { userID, postID: parseInt(postID), comment }
+      )
+
+      return res.status(200).json({
+        commentSuccess: 'Commented successfully'
+      })
+    } catch (err) {
+      console.error(err)
+      return res.status(500).json({
+        commentError: 'An unknown error occurred, please try again later'
+      })
+    }
+  }
+)
+
+apiRoutes.post(
+  '/posts/:postID/comment/:commentID/reply',
+  [authMiddleware, csrfMiddleware],
+  async (
+    req: DefaultAPIRequest,
+    res: express.Response
+  ): Promise<express.Response> => {
+    try {
+      const { userID } = req // From auth middleware
+      const { postID } = req.params
+      const { commentID } = req.params
+      const { comment } = req.body
+
+      if (!comment) {
+        return res.status(400).json({
+          commentError: 'A comment must be provided'
+        })
+      }
+
+      await queryNeo4j(
+        req.app.locals.driver,
+
+        'MATCH (u:User {userID: $userID}) ' +
+          'MATCH (rootComment:Comment) WHERE id(rootComment) = $commentID ' +
+          'CREATE (replyComment:Comment {text: $comment, created_at: TIMESTAMP()}) ' +
+          'CREATE (u)-[cf:CommentFrom]->(replyComment) ' +
+          'CREATE (replyComment)-[rt:CommentTo]->(rootComment)',
+        {
+          userID,
+          postID: parseInt(postID),
+          commentID: parseInt(commentID),
+          comment
+        }
+      )
+
+      return res.status(200).json({
+        commentSuccess: 'Commented successfully'
+      })
+    } catch (err) {
+      console.error(err)
+      return res.status(500).json({
+        commentError: 'An unknown error occurred, please try again later'
+      })
+    }
+  }
+)
+
+apiRoutes.delete(
+  '/comments/delete/:commentID',
+  [authMiddleware, csrfMiddleware],
+  async (
+    req: DefaultAPIRequest,
+    res: express.Response
+  ): Promise<express.Response> => {
+    try {
+      const { userID } = req
+      const { commentID } = req.params
+
+      const results = await queryNeo4j(
+        req.app.locals.driver,
+        'MATCH (u:User {userID: $userID})-[:CommentFrom]->(c:Comment) ' +
+          'WHERE id(c) = $commentID return c',
+        { userID, commentID: parseInt(commentID) }
+      )
+
+      if (results.records.length === 0) {
+        return res.status(404).json({
+          deleteCommentError: 'Comment not found'
+        })
+      }
+
+      await queryNeo4j(
+        req.app.locals.driver,
+        'MATCH (u:User {userID: $userID})-[:CommentFrom]->(c:Comment) ' +
+          'WHERE id(c) = $commentID detach delete c',
+        { userID, commentID: parseInt(commentID) }
+      )
+
+      return res.status(200).json({
+        deleteCommentSuccess: 'Comment deleted successfully'
+      })
+    } catch (err) {
+      console.error(err)
+      return res.status(500).json({
+        deleteCommentError: 'An unknown error occurred, please try again later'
       })
     }
   }
