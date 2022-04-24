@@ -62,11 +62,7 @@ apiRoutes.get(
           'WHERE id(p) = $postID ' +
           'OPTIONAL MATCH (activeUser:User {userID: $userID}) ' +
           'OPTIONAL MATCH (activeUser)-[:ReactionFrom]->(r:Reaction)-[:ReactionTo]->(p) ' +
-          'OPTIONAL MATCH (rootComment:Comment)-[:CommentTo]->(p) ' +
-          'OPTIONAL MATCH (rootCommentFrom:User)-[:CommentFrom]->(rootComment) ' +
-          'OPTIONAL MATCH (replyComment:Comment)-[commentToCommentRelationship:CommentTo *0..7]->(rootComment) ' +
-          'OPTIONAL MATCH (replyCommentFrom:User)-[:CommentFrom *0..7]->(replyComment) ' +
-          'RETURN p, u, r, rootComment, rootCommentFrom, replyComment, replyCommentFrom, commentToCommentRelationship',
+          'RETURN p, u, r',
         { userID, postID: parseInt(postID) }
       )
 
@@ -80,6 +76,63 @@ apiRoutes.get(
       const nodeUserVal = results.records[0].get('u')
       const nodeReactionVal = results.records[0].get('r')
       const reaction = nodeReactionVal ? nodeReactionVal.properties.type : null
+
+      return res.status(200).json({
+        getPostSuccess: 'Posts obtained successfully',
+        user: {
+          userID: nodeUserVal.properties.userID,
+          username: nodeUserVal.properties.username,
+          createdAt: nodeUserVal.properties.created_at.toNumber(),
+          bio: nodeUserVal.properties.bio,
+          avatar: nodeUserVal.properties.avatar
+        },
+        post: {
+          postID: nodePostVal.identity.low,
+          createdAt: nodePostVal.properties.created_at.toNumber(),
+          description: nodePostVal.properties.description,
+          title: nodePostVal.properties.title,
+          body: nodePostVal.properties.body,
+          thumbnail: nodePostVal.properties.thumbnail,
+          ...(reaction && { reaction })
+        }
+      })
+    } catch (err) {
+      console.error(err)
+      return res.status(500).json({
+        getPostError: 'An unknown error occurred, please try again later'
+      })
+    }
+  }
+)
+
+// Obtain post comments by post ID
+apiRoutes.get(
+  '/post/:postID/comments',
+  async (
+    req: DefaultAPIRequest,
+    res: express.Response
+  ): Promise<express.Response> => {
+    try {
+      const { postID } = req.params
+
+      const results = await queryNeo4j(
+        req.app.locals.driver,
+        'MATCH (p:Post)' +
+          'WHERE id(p) = $postID ' +
+          'OPTIONAL MATCH (rootComment:Comment)-[:CommentTo]->(p) ' +
+          'OPTIONAL MATCH (rootCommentFrom:User)-[:CommentFrom]->(rootComment) ' +
+          'OPTIONAL MATCH (replyComment:Comment)-[commentToCommentRelationship:CommentTo *0..7]->(rootComment) ' +
+          'OPTIONAL MATCH (replyCommentFrom:User)-[:CommentFrom *0..7]->(replyComment) ' +
+          'RETURN rootComment, rootCommentFrom, replyComment, replyCommentFrom, commentToCommentRelationship',
+        { postID: parseInt(postID) }
+      )
+
+      if (results.records.length === 0) {
+        return res.status(404).json({
+          getCommentsError: 'Post not found'
+        })
+      }
+
       const commentVals = results.records.map((r) => {
         const rootCommentVal = r.get('rootComment')
         const rootCommentFromVal = r.get('rootCommentFrom')
@@ -122,23 +175,7 @@ apiRoutes.get(
       })
 
       return res.status(200).json({
-        getPostSuccess: 'Posts obtained successfully',
-        user: {
-          userID: nodeUserVal.properties.userID,
-          username: nodeUserVal.properties.username,
-          createdAt: nodeUserVal.properties.created_at.toNumber(),
-          bio: nodeUserVal.properties.bio,
-          avatar: nodeUserVal.properties.avatar
-        },
-        post: {
-          postID: nodePostVal.identity.low,
-          createdAt: nodePostVal.properties.created_at.toNumber(),
-          description: nodePostVal.properties.description,
-          title: nodePostVal.properties.title,
-          body: nodePostVal.properties.body,
-          thumbnail: nodePostVal.properties.thumbnail,
-          ...(reaction && { reaction })
-        },
+        getCommentsSuccess: 'Comments obtained successfully',
         ...(commentVals.every((cv) => Object.keys(cv).length > 0) && {
           comments: commentVals
         })
@@ -146,7 +183,7 @@ apiRoutes.get(
     } catch (err) {
       console.error(err)
       return res.status(500).json({
-        getPostError: 'An unknown error occurred, please try again later'
+        getCommentsError: 'An unknown error occurred, please try again later'
       })
     }
   }
@@ -215,8 +252,15 @@ apiRoutes.post(
             'WHERE NOT(ID(p) IN $currentPosts) ' +
             'OPTIONAL MATCH (activeUser:User {userID: $userID}) ' +
             'OPTIONAL MATCH (activeUser)-[:ReactionFrom]->(r:Reaction)-[:ReactionTo]->(p) ' +
-            'return p, u, r ' +
-            'ORDER BY p.created_at ' +
+            'OPTIONAL MATCH (allReactions: Reaction)-[art: ReactionTo]->(p) ' +
+            'return p, u, r, sum( ' +
+            'case allReactions.type ' +
+            'when "Like" then 1 ' +
+            'when "Dislike" then -1 ' +
+            'else 0 ' +
+            'end ' +
+            ')/((p.created_at - timestamp())^2) as score ' +
+            'ORDER BY score ' +
             'DESC LIMIT 9',
           { currentPosts, userID }
         )
