@@ -6,6 +6,8 @@ const DO_SPACE_BUCKET = process.env.DO_SPACE_BUCKET || 'distnode-static-dev'
 const DO_SPACE_BUCKET_ACCESS_KEY = process.env.DO_SPACE_BUCKET_ACCESS_KEY
 const DO_SPACE_BUCKET_SECRET_KEY = process.env.DO_SPACE_BUCKET_SECRET_KEY
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:3002'
+const FRONTEND_ORIGIN_WWW =
+  process.env.FRONTEND_ORIGIN_WWW || 'http://www.localhost:3002'
 const JWT_ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_TOKEN_SECRET
 const MONGO_CA_CERT = process.env.MONGO_CA_CERT
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/test'
@@ -22,6 +24,7 @@ export {
   DO_SPACE_BUCKET_ACCESS_KEY,
   DO_SPACE_BUCKET_SECRET_KEY,
   FRONTEND_ORIGIN,
+  FRONTEND_ORIGIN_WWW,
   JWT_ACCESS_TOKEN_SECRET,
   MONGO_CA_CERT,
   MONGO_URI,
