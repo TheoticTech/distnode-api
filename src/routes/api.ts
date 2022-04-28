@@ -89,6 +89,10 @@ apiRoutes.get(
         post: {
           postID: nodePostVal.identity.low,
           createdAt: nodePostVal.properties.created_at.toNumber(),
+          ...(nodePostVal.properties.updated_at && {
+            updatedAt: nodePostVal.properties.updated_at.toNumber()
+          }),
+          ...(reaction && { reaction }),
           description: nodePostVal.properties.description,
           title: nodePostVal.properties.title,
           body: nodePostVal.properties.body,
@@ -218,8 +222,8 @@ apiRoutes.get(
           const nodeUserVal = r.get('u')
           const nodeReactionVal = r.get('r')
           const reaction = nodeReactionVal
-          ? nodeReactionVal.properties.type
-          : null
+            ? nodeReactionVal.properties.type
+            : null
           return {
             userID: nodeUserVal.properties.userID,
             username: nodeUserVal.properties.username,
@@ -448,7 +452,8 @@ apiRoutes.post(
         'MATCH (p:Post) WHERE id(p) = $postID SET ' +
           'p.title = $title, ' +
           'p.description = $description, ' +
-          'p.body = $sanitizedBody' +
+          'p.body = $sanitizedBody, ' +
+          'p.updated_at = TIMESTAMP()' +
           `${thumbnail ? ', p.thumbnail = $thumbnail ' : ' '}` +
           'RETURN p',
         {
@@ -855,8 +860,8 @@ apiRoutes.get(
             const nodePostVal = r.get('p')
             const nodeReactionVal = r.get('r')
             const reaction = nodeReactionVal
-            ? nodeReactionVal.properties.type
-            : null
+              ? nodeReactionVal.properties.type
+              : null
             // We'll keep user info in the post object for PostFeed
             return {
               userID: user.userID,

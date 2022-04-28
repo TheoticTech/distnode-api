@@ -4,10 +4,7 @@ import express from 'express'
 // Configurations
 import { FRONTEND_ORIGIN, FRONTEND_ORIGIN_WWW } from '../config'
 
-const allowedOrigins = [
-  FRONTEND_ORIGIN,
-  FRONTEND_ORIGIN_WWW
-]
+const allowedOrigins = [FRONTEND_ORIGIN, FRONTEND_ORIGIN_WWW]
 
 const corsMiddleware = (req, res, next): express.Response => {
   const origin = req.headers.origin
