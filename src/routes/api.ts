@@ -209,8 +209,8 @@ apiRoutes.get(
       const results = await queryNeo4j(
         req.app.locals.driver,
         'MATCH (p:Post)-[:POSTED_BY]->(u:User) WHERE id(p) = $postID ' +
-          'AND p.published <> false ' +
           'MATCH (po: Post)-[:POSTED_BY]->(u:User) WHERE id(po) <> id(p) ' +
+          'AND po.published <> false ' +
           'OPTIONAL MATCH (activeUser:User {userID: $userID}) ' +
           'OPTIONAL MATCH (activeUser)-[:ReactionFrom]->(r:Reaction)-[:ReactionTo]->(po) ' +
           'return po, u, r LIMIT 6',
