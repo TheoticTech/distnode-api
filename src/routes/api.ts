@@ -97,6 +97,7 @@ apiRoutes.get(
           title: nodePostVal.properties.title,
           body: nodePostVal.properties.body,
           thumbnail: nodePostVal.properties.thumbnail,
+          published: nodePostVal.properties.published,
           ...(reaction && { reaction })
         }
       })
@@ -121,7 +122,7 @@ apiRoutes.get(
 
       const results = await queryNeo4j(
         req.app.locals.driver,
-        'MATCH (p:Post)' +
+        'MATCH (p:Post) ' +
           'WHERE id(p) = $postID ' +
           'OPTIONAL MATCH (rootComment:Comment)-[:CommentTo]->(p) ' +
           'OPTIONAL MATCH (rootCommentFrom:User)-[:CommentFrom]->(rootComment) ' +
@@ -208,6 +209,7 @@ apiRoutes.get(
       const results = await queryNeo4j(
         req.app.locals.driver,
         'MATCH (p:Post)-[:POSTED_BY]->(u:User) WHERE id(p) = $postID ' +
+          'AND p.published <> false ' +
           'MATCH (po: Post)-[:POSTED_BY]->(u:User) WHERE id(po) <> id(p) ' +
           'OPTIONAL MATCH (activeUser:User {userID: $userID}) ' +
           'OPTIONAL MATCH (activeUser)-[:ReactionFrom]->(r:Reaction)-[:ReactionTo]->(po) ' +
@@ -233,6 +235,7 @@ apiRoutes.get(
             description: nodePostVal.properties.description,
             title: nodePostVal.properties.title,
             thumbnail: nodePostVal.properties.thumbnail,
+            published: nodePostVal.properties.published,
             ...(reaction && { reaction })
           }
         })
@@ -263,6 +266,7 @@ apiRoutes.post(
           req.app.locals.driver,
           'MATCH (p:Post)-[:POSTED_BY]->(u:User) ' +
             'WHERE NOT(ID(p) IN $currentPosts) ' +
+            'AND p.published <> false ' +
             'OPTIONAL MATCH (activeUser:User {userID: $userID}) ' +
             'OPTIONAL MATCH (activeUser)-[:ReactionFrom]->(r:Reaction)-[:ReactionTo]->(p) ' +
             'OPTIONAL MATCH (allReactions: Reaction)-[art: ReactionTo]->(p) ' +
@@ -273,8 +277,8 @@ apiRoutes.post(
             'else 0 ' +
             'end ' +
             ')/((p.created_at - timestamp())^2) as score ' +
-            'ORDER BY score ' +
-            'DESC LIMIT 9',
+            'ORDER BY score DESC, p.created_at DESC ' +
+            'LIMIT 9',
           { currentPosts, userID }
         )
 
@@ -284,6 +288,7 @@ apiRoutes.post(
             const nodePostVal = r.get('p')
             const nodeUserVal = r.get('u')
             const nodeReactionVal = r.get('r')
+            const nodeScoreVal = r.get('score')
             const reaction = nodeReactionVal
               ? nodeReactionVal.properties.type
               : null
@@ -296,6 +301,8 @@ apiRoutes.post(
               description: nodePostVal.properties.description,
               title: nodePostVal.properties.title,
               thumbnail: nodePostVal.properties.thumbnail,
+              published: nodePostVal.properties.published,
+              score: nodeScoreVal,
               ...(reaction && { reaction })
             }
           })
@@ -305,9 +312,17 @@ apiRoutes.post(
           req.app.locals.driver,
           'MATCH (p:Post)-[:POSTED_BY]->(u:User) ' +
             'WHERE NOT(ID(p) IN $currentPosts) ' +
-            'return p, u ' +
-            'ORDER BY p.created_at ' +
-            'DESC LIMIT 9',
+            'AND p.published <> false ' +
+            'OPTIONAL MATCH (allReactions: Reaction)-[art: ReactionTo]->(p) ' +
+            'return p, u, sum( ' +
+            'case allReactions.type ' +
+            'when "Like" then 1 ' +
+            'when "Dislike" then -1 ' +
+            'else 0 ' +
+            'end ' +
+            ')/((p.created_at - timestamp())^2) as score ' +
+            'ORDER BY score DESC, p.created_at DESC ' +
+            'LIMIT 9',
           { currentPosts }
         )
 
@@ -324,7 +339,8 @@ apiRoutes.post(
               postCreatedAt: nodePostVal.properties.created_at.toNumber(),
               description: nodePostVal.properties.description,
               title: nodePostVal.properties.title,
-              thumbnail: nodePostVal.properties.thumbnail
+              thumbnail: nodePostVal.properties.thumbnail,
+              published: nodePostVal.properties.published
             }
           })
         })
@@ -347,7 +363,7 @@ apiRoutes.post(
   ): Promise<express.Response> => {
     try {
       const { userID } = req
-      const { title, description, body, thumbnail } = req.body
+      const { title, description, body, thumbnail, published } = req.body
 
       if (!title) {
         return res.status(400).json({
@@ -377,11 +393,12 @@ apiRoutes.post(
           'description: $description, ' +
           'body: $sanitizedBody, ' +
           `${thumbnail ? 'thumbnail: $thumbnail, ' : ''}` +
+          'published: $published, ' +
           'created_at: TIMESTAMP()' +
           '})' +
           '-[:POSTED_BY]->(u) ' +
           'RETURN p',
-        { userID, title, description, sanitizedBody, thumbnail }
+        { userID, title, description, sanitizedBody, thumbnail, published }
       )
       return res.status(200).json({
         addPostSuccess: 'Post created successfully'
@@ -404,7 +421,7 @@ apiRoutes.post(
   ): Promise<express.Response> => {
     try {
       const { userID } = req
-      const { title, description, body, thumbnail } = req.body
+      const { title, description, body, thumbnail, published } = req.body
       const { postID } = req.params
 
       if (!title) {
@@ -453,7 +470,8 @@ apiRoutes.post(
           'p.title = $title, ' +
           'p.description = $description, ' +
           'p.body = $sanitizedBody, ' +
-          'p.updated_at = TIMESTAMP()' +
+          'p.updated_at = TIMESTAMP(), ' +
+          'p.published = $published ' +
           `${thumbnail ? ', p.thumbnail = $thumbnail ' : ' '}` +
           'RETURN p',
         {
@@ -461,7 +479,8 @@ apiRoutes.post(
           title,
           description,
           sanitizedBody,
-          thumbnail
+          thumbnail,
+          published
         }
       )
       return res.status(200).json({
@@ -829,6 +848,7 @@ apiRoutes.get(
         req.app.locals.driver,
         'MATCH (u:User {userID: $userIDParam}) ' +
           'OPTIONAL MATCH (p:Post)-[pb:POSTED_BY]->(u) ' +
+          `${userID !== userIDParam ? 'WHERE p.published <> false ' : ''}` +
           'OPTIONAL MATCH (activeUser:User {userID: $userID}) ' +
           'OPTIONAL MATCH (activeUser)-[:ReactionFrom]->(r:Reaction)-[:ReactionTo]->(p) ' +
           'return p, u, r ORDER BY p.created_at DESC',
@@ -873,11 +893,13 @@ apiRoutes.get(
               description: nodePostVal.properties.description,
               title: nodePostVal.properties.title,
               thumbnail: nodePostVal.properties.thumbnail,
+              published: nodePostVal.properties.published,
               ...(reaction && { reaction })
             }
           })
       })
     } catch (err) {
+      console.error(err)
       return res.status(500).json({
         getUserProfileError: 'An unknown error occurred, please try again later'
       })

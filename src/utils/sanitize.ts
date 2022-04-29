@@ -20,7 +20,8 @@ const sanitizeBody = (body) => {
       video: ['controls', 'width', 'height', 'style', 'src', 'poster'],
       span: ['style'],
       p: ['style'],
-      div: ['class', 'style']
+      div: ['class', 'style'],
+      a: [ 'href', 'name', 'target' ],
     },
     allowedIframeHostnames: ['www.youtube.com'],
     allowedSchemesByTag: {
