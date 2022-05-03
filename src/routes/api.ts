@@ -1,5 +1,8 @@
 // Third party
-import express from 'express'
+import axios from 'axios'
+import express, { response } from 'express'
+import { parse } from 'node-html-parser'
+import imageType from 'image-type'
 
 // Local
 import { authMiddleware, optionalAuthMiddleware } from '../middleware/auth'
@@ -8,6 +11,10 @@ import { Reactions } from '../types/Reactions'
 import { sanitizeBody } from '../utils/sanitize'
 import { uploadMiddleware } from '../middleware/upload'
 import queryNeo4j from '../utils/queryNeo4j'
+import uploadDirect from '../utils/uploadDirect'
+
+// Configurations
+import { PRERENDER_SERVER } from '../config'
 
 const apiRoutes = express.Router()
 
@@ -927,6 +934,66 @@ apiRoutes.post(
       }
     } catch (err) {
       res.status(500).send(err)
+    }
+  }
+)
+
+apiRoutes.get(
+  '/prerender',
+  [authMiddleware],
+  async (
+    req: DefaultAPIRequest,
+    res: express.Response
+  ): Promise<express.Response> => {
+    try {
+      const { url } = req.query
+
+      if (!url) {
+        return res.status(400).json({
+          prerenderError: 'A URL must be provided'
+        })
+      }
+
+      const prerenderResponse = await axios.get(
+        `${PRERENDER_SERVER}/render\?url\=${url}`
+      )
+
+      const root = parse(prerenderResponse.data)
+      const titleElement = root.querySelector("meta[property='og:title']")
+      const descriptionElement = root.querySelector("meta[property='og:description']")
+      const imageElement = root.querySelector("meta[property='og:image']")
+
+      const title = titleElement ? titleElement.getAttribute('content') : null
+      const description = descriptionElement ? descriptionElement.getAttribute('content') : null
+      const image = imageElement ? imageElement.getAttribute('content') : null
+
+      if (!image) {
+        return res.status(200).json({
+          prerenderSuccess: 'Prerendered successfully',
+          ...(title && { title }),
+          ...(description && { description })
+        })
+      }
+
+      const imageResponse = await axios.get(image, {responseType: 'arraybuffer'})
+
+      const { ext } = imageType(
+        imageResponse.data.slice(0, imageType.minimumBytes)
+      )
+
+      const staticImageURL = await uploadDirect(imageResponse.data, ext)
+
+      return res.status(200).json({
+        prerenderSuccess: 'Prerendered successfully',
+        ...(title && { title }),
+        ...(description && { description }),
+        ...(staticImageURL && { image: staticImageURL })
+      })
+    } catch (err) {
+      console.error(err)
+      return res.status(500).json({
+        prerenderError: 'An unknown error occurred, please try again later'
+      })
     }
   }
 )

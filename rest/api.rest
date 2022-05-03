@@ -33,3 +33,7 @@ content-type: application/json
 ### Get user's posts
 GET http://localhost:3001/api/posts/
 content-type: application/json
+
+### Prerender URL
+GET http://localhost:3001/api/prerender?url=https://www.theotic.io/
+content-type: application/json
