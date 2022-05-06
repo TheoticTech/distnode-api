@@ -15,7 +15,7 @@ const sanitizeBody = (body) => {
         'allowfullscreen',
         'allow'
       ],
-      img: ['src', 'width', 'height'],
+      img: ['src', 'width'],
       audio: ['controls', 'src'],
       video: ['controls', 'width', 'height', 'style', 'src', 'poster'],
       span: ['style'],
