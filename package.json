@@ -14,7 +14,7 @@
   "author": "Greg Krause",
   "devDependencies": {
     "@types/express": "^4.17.13",
-    "@types/mocha": "^9.1.0",
+    "@types/mocha": "^9.1.1",
     "@types/multer": "^1.4.7",
     "@types/sanitize-html": "^2.6.2",
     "@typescript-eslint/eslint-plugin": "^5.11.0",
